@@ -43,6 +43,7 @@
       </div>
       <button class="ghost" id="open-lexicon">Pronunciations <span class="count" id="lex-count">0</span></button>
       <button class="ghost" id="open-tips">Provider tips</button>
+      <a class="ghost" href="/results">Results</a>
     </div>
   </header>
 
@@ -107,6 +108,7 @@
         <label>Passcode <input type="password" id="passcode" autocomplete="off" /></label>
       </div>
       <div class="run-bar">
+        <label class="check blind-toggle" title="Shuffle the takes and hide who made each one until you vote"><input type="checkbox" id="blind" /> Blind test</label>
         <button class="ghost" id="preview-btn" title="See the exact text each provider receives, without generating audio">Preview what's sent</button>
         <button class="primary" id="run-btn">Generate</button>
       </div>

@@ -14,6 +14,7 @@ let lineup = store.get('sir.lineup', {});
 let lexicon = store.get('sir.lexicon', []);
 let currentAudio = null;
 let samples = null;
+let blind = store.get('sir.blind', false);
 
 const byId = (id) => cfg.providers.find((p) => p.id === id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -222,6 +223,8 @@ function updateRunButton() {
     return sum + (estimateCost(price, chars, chars / 15) || 0);
   }, 0);
   btn.textContent = n ? `Generate ${n} take${n > 1 ? 's' : ''} · ~${fmtUsd(cost)}` : 'Turn on a voice';
+  if (blind && n === 1) { btn.disabled = true; btn.textContent = 'Turn on a second voice to test blind'; }
+  else if (blind && n) btn.textContent = `Generate ${n} blind takes · ~${fmtUsd(cost)}`;
 }
 
 /* ---------------- Script ---------------- */
@@ -235,6 +238,9 @@ function bindScript() {
   $('#run-btn').addEventListener('click', run);
   $('#preview-btn').addEventListener('click', preview);
   $('#gen-btn').addEventListener('click', generateWithClaude);
+  const blindBox = $('#blind');
+  blindBox.checked = blind;
+  blindBox.addEventListener('change', () => { blind = blindBox.checked; store.set('sir.blind', blind); updateRunButton(); });
 
   const input = $('#file-input');
   const dz = $('#dropzone');
@@ -335,6 +341,7 @@ async function run() {
     }
   }
   const speed = Number($('#speed').value);
+  if (blind) return runBlind(text, ts, speed);
   const runs = $('#runs');
   $('.empty', runs)?.remove();
 
@@ -386,18 +393,7 @@ function makeTakeCard(p, model, voice) {
 async function fillTake(card, p, r) {
   const url = URL.createObjectURL(r.blob);
   const audio = new Audio(url);
-  let peaks = [];
-  let duration = null;
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const buf = await ctx.decodeAudioData(await r.blob.arrayBuffer());
-    duration = buf.duration;
-    peaks = computePeaks(buf, 600);
-    ctx.close();
-  } catch {
-    await new Promise((res) => { audio.addEventListener('loadedmetadata', res, { once: true }); setTimeout(res, 1500); });
-    duration = Number.isFinite(audio.duration) ? audio.duration : null;
-  }
+  const { peaks, duration } = await decodeTake(r.blob, audio);
   card.classList.remove('loading');
 
   const m = r.metrics;
@@ -434,6 +430,165 @@ function markBest(results) {
   };
   best('ttfa', 'fastest');
   best('cost', 'cheapest');
+}
+
+/** Decode a clip for its waveform and length, falling back to the audio element's metadata when decoding fails. */
+async function decodeTake(blob, audio) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const peaks = computePeaks(buf, 600);
+    ctx.close();
+    return { peaks, duration: buf.duration };
+  } catch {
+    await new Promise((res) => { audio.addEventListener('loadedmetadata', res, { once: true }); setTimeout(res, 1500); });
+    return { peaks: [], duration: Number.isFinite(audio.duration) ? audio.duration : null };
+  }
+}
+
+/* ---------------- Blind test ---------------- */
+// The whole lineup goes to the server in one request. It synthesizes, shuffles and answers with
+// letters and audio only; who made each take stays on the server until a vote is recorded, so
+// nothing this page renders can give one away.
+async function runBlind(text, ts, speed) {
+  const runs = $('#runs');
+  $('.empty', runs)?.remove();
+  const block = document.createElement('section');
+  block.className = 'run blind';
+  block.innerHTML = `<div class="run-head"><p class="run-text"></p><span class="run-meta num">Blind · ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${speed.toFixed(2)}× speed</span></div><div class="take-grid"></div><div class="vote"></div>`;
+  $('.run-text', block).textContent = text;
+  runs.prepend(block);
+  block.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+
+  const btn = $('#run-btn');
+  btn.disabled = true;
+  const grid = $('.take-grid', block);
+  ts.forEach(() => { const c = makeBlindCard(''); c.classList.add('loading'); grid.append(c); });
+  let r;
+  try {
+    r = await api('/api/blind-run', {
+      text, lexicon, speed,
+      targets: ts.map((t) => ({ provider: t.p.id, model: t.model, voice: t.voice, voiceName: voiceName(t.p.id, t.voice), speed: t.p.speed ? Math.min(t.p.speed.max, Math.max(t.p.speed.min, speed)) : 1, options: t.options })),
+    });
+  } catch (e) {
+    grid.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    updateRunButton();
+    return;
+  }
+  grid.innerHTML = '';
+  const takes = await Promise.all(r.takes.map(async (t) => {
+    const bytes = Uint8Array.from(atob(t.audio), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: t.contentType });
+    const card = makeBlindCard(t.letter, r.id, r.takes.length);
+    grid.append(card);
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    const { peaks, duration } = await decodeTake(blob, audio);
+    $('.stats', card).innerHTML = `<div><dt>Audio length</dt><dd>${duration ? `${duration.toFixed(1)}<small>s</small>` : '—'}</dd></div>`;
+    $('.time', card).textContent = duration ? fmtSec(duration) : '';
+    wireWaveform(card, audio, peaks, '#a69fbb');
+    return { letter: t.letter, card, audio, url, blob };
+  }));
+  renderVoteForm(block, r, takes);
+  updateRunButton();
+}
+
+// A take card with no identity: a letter, the player, the clip length and the vote controls.
+function makeBlindCard(letter, runId, count) {
+  const card = $('#take-tpl').content.firstElementChild.cloneNode(true);
+  card.classList.add('blind');
+  $('.pname', card).textContent = letter ? `Take ${letter}` : 'Generating…';
+  $('.stats', card).innerHTML = '<div><dt>Audio length</dt><dd>—</dd></div>';
+  $('.sent', card).remove();
+  if (letter) {
+    const ranks = Array.from({ length: count - 1 }, (_, i) => `<option value="${i + 2}">${i + 2}</option>`).join('');
+    card.insertAdjacentHTML('beforeend', `<div class="vote-row">
+      <label><input type="radio" name="pick-${esc(runId)}" value="${esc(letter)}" /> Best</label>
+      <label>Rank <select class="rank" aria-label="Rank of take ${esc(letter)}"><option value="">—</option>${ranks}</select></label>
+      <label><input type="checkbox" class="nw" value="${esc(letter)}" /> Numbers wrong</label>
+    </div>`);
+  }
+  return card;
+}
+
+function renderVoteForm(block, r, takes) {
+  const box = $('.vote', block);
+  box.innerHTML = `${r.failed ? `<p class="warn">${r.failed} take${r.failed > 1 ? 's' : ''} failed; the details appear after you vote.</p>` : ''}
+    <form class="vote-form" autocomplete="off">
+      <label>Your name <input name="voter" required maxlength="80" placeholder="Who’s listening?" /></label>
+      <label><span>Note <span class="opt">optional</span></span> <input name="note" maxlength="2000" placeholder="What stood out?" /></label>
+      <button type="submit" class="primary">Submit vote and reveal</button>
+      <p class="hint">Pick the best take. Ranking the others and flagging a misread number, unit or name are optional.</p>
+    </form>`;
+  const form = $('form', box);
+  const hint = $('.hint', form);
+  form.elements.voter.value = store.get('sir.voter', '');
+  form.elements.voter.addEventListener('input', (e) => store.set('sir.voter', e.target.value));
+  // The pick is rank 1, so its own rank menu goes quiet.
+  block.addEventListener('change', (e) => {
+    if (e.target.type !== 'radio') return;
+    for (const t of takes) {
+      const sel = $('.rank', t.card);
+      sel.disabled = e.target.value === t.letter;
+      if (sel.disabled) sel.value = '';
+    }
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const pick = $('input[type=radio]:checked', block)?.value;
+    if (!pick) { hint.className = 'hint error'; hint.textContent = 'Choose the best take first.'; return; }
+    const ranked = takes.filter((t) => t.letter !== pick && $('.rank', t.card).value)
+      .map((t) => ({ letter: t.letter, rank: Number($('.rank', t.card).value) })).sort((a, b) => a.rank - b.rank);
+    if (new Set(ranked.map((x) => x.rank)).size !== ranked.length) { hint.className = 'hint error'; hint.textContent = 'Two takes have the same rank.'; return; }
+    const body = {
+      run: r.id,
+      voter: form.elements.voter.value.trim(),
+      pick,
+      ranking: ranked.length ? [pick, ...ranked.map((x) => x.letter)] : null,
+      numbersWrong: takes.filter((t) => $('.nw', t.card).checked).map((t) => t.letter),
+      note: form.elements.note.value.trim(),
+    };
+    const btn = $('button', form);
+    btn.disabled = true;
+    hint.className = 'hint';
+    hint.textContent = 'Saving…';
+    try {
+      const res = await api('/api/votes', body);
+      await reveal(block, takes, res);
+    } catch (e) {
+      hint.className = 'hint error';
+      hint.textContent = e.message;
+      btn.disabled = false;
+    }
+  });
+}
+
+// After the vote each lettered card becomes an ordinary take card, keeping its letter and showing the vote.
+async function reveal(block, takes, { vote, reveal: rv }) {
+  block.classList.add('revealed');
+  const byLetter = Object.fromEntries(rv.takes.map((t) => [t.letter, t]));
+  const label = (t) => `${esc(t.providerName)} ${esc(t.modelLabel)} · ${esc(t.voiceName)}`;
+  const results = await Promise.all(takes.map(async (t) => {
+    const info = byLetter[t.letter];
+    t.audio.pause();
+    URL.revokeObjectURL(t.url);
+    const p = byId(info.provider) || { id: info.provider, name: info.providerName, color: '#aaa', models: [] };
+    const card = makeTakeCard(p, info.model, info.voiceName);
+    const head = $('.take-head', card);
+    head.insertAdjacentHTML('afterbegin', `<span class="letter">${esc(t.letter)}</span>`);
+    if (t.letter === vote.pick) head.insertAdjacentHTML('beforeend', '<span class="badge">your pick</span>');
+    if (vote.numbersWrong.includes(t.letter)) head.insertAdjacentHTML('beforeend', '<span class="badge flag">numbers wrong</span>');
+    card.classList.add('loading');
+    t.card.replaceWith(card);
+    return fillTake(card, p, { ...info, blob: t.blob });
+  }));
+  markBest(results);
+  const parts = [`<strong>${esc(vote.voter)}</strong> picked <strong>${esc(vote.pick)}</strong>: ${label(byLetter[vote.pick])}.`];
+  if (vote.ranking) parts.push(`Ranking: ${vote.ranking.map(esc).join(' › ')}.`);
+  if (vote.numbersWrong.length) parts.push(`Numbers wrong: ${vote.numbersWrong.map(esc).join(', ')}.`);
+  if (vote.note) parts.push(`“${esc(vote.note)}”`);
+  const failed = rv.failed.map((f) => `<p class="warn">${esc(f.provider)}: ${esc(f.error)}</p>`).join('');
+  $('.vote', block).innerHTML = `<p class="vote-done">Revealed. ${parts.join(' ')} <a href="/results">See all results</a></p>${failed}`;
 }
 
 /* ---------------- Waveform ---------------- */

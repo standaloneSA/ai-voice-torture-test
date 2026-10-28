@@ -32,6 +32,7 @@ Read the write-up: [I built a torture test for AI voices](https://ghelmstetter.s
 - **Write test text with Claude:** torture tests, natural paragraphs, dialogue, or sentences built around your own problem words.
 - **One pronunciation list, five APIs.** Enter a word with a sounds-like spelling and/or IPA (Claude can suggest the IPA). The app translates it into each provider's mechanism and shows exactly what was sent.
 - **Provider tips:** workarounds from each provider's docs for pauses, emphasis, spelling things out, and numbers, with copyable examples.
+- **Blind test:** shuffle the takes, hide who made them, pick the best by ear, then reveal. Votes are kept on disk and summed on a results page.
 - **Public-demo ready:** a free Samples mode with pre-recorded takes (to avoid burning tokens), plus an optional passcode, per-visitor limits, and a daily budget for live generation.
 - **No dependencies.** Plain Node.js; nothing to `npm install`.
 
@@ -113,8 +114,19 @@ All settings live in `.env` (see `.env.example`):
 | `LIVE_PASSCODE` | Live generation requires this passcode. |
 | `DAILY_REQUESTS_PER_IP` | Max live requests per visitor per day. |
 | `DAILY_CHAR_BUDGET` | Max characters synthesized per day, across everyone. |
-| `MOCK_PROVIDER=1` | Adds a "Test tone" provider that needs no key, for trying the UI. |
+| `MOCK_PROVIDER=1` | Adds three "Test tone" providers that need no key, for trying the UI (three, so a blind test has something to shuffle). |
 | `CARTESIA_DEMO_VOICE` | Cartesia voice used when recording Samples. |
+
+## Blind test
+
+Numbers and names tell you whether a voice is *right*; whether it *sounds* right is easier to judge when you don't know whose it is. Tick **Blind test** next to **Generate** (it's remembered, like the other settings) and run two or more voices:
+
+- The takes come back shuffled and labelled **A, B, C…**, with only a waveform, play control and clip length. Provider, model, voice, timings, cost, "what was sent" and warnings are all withheld, and the lineup is sent to the server in one request so the browser never learns which take is whose; nothing in the page (element ids, classes, audio URLs, download names) can give one away.
+- Under the run, pick the **best** take (required), optionally **rank** the others, tick **Numbers wrong** on any take where you heard a number, unit or name read incorrectly, add a note and your name, and **Submit vote and reveal**. The identities then appear and stay; a run takes exactly one vote.
+- Every vote is appended as one JSON line to `results/votes.jsonl` next to the app (created on first vote; ignored by git), with the script and a sha256 of it (whitespace collapsed, so the same script pasted with different line breaks groups together), the takes in the order shown with their letter and full identity (provider, model, voice, options), the pick, the ranking, the numbers-wrong flags and the note. Delete a line to retract a vote.
+- **Results** (top right, or `/results`) sums the file: appearances, wins, win rate, numbers-wrong count and mean rank per voice, model or provider; filters by voter and by script; and a head-to-head of any two identities showing how often each was picked when both were in the same run.
+
+A blind run counts against the daily limits like one Generate per take. Pending (unvoted) runs are held in the server's memory, so a restart means generating again; recorded votes survive restarts. With `MOCK_PROVIDER=1` the three Test tone providers each default to a different tone, so the blind test can be tried without any key.
 
 ## Running a public demo
 
@@ -148,15 +160,19 @@ server/
   synthesize.js     applies pronunciations, calls a provider, returns audio + metrics
   claude.js         test-text generation and IPA suggestions
   guard.js          passcode, rate limits, daily budget
+  blind.js          blind runs, vote recording, results reading
   providers/        one file per provider, plus shared helpers
 public/
   index.html, styles.css, app.js    the interface (vanilla JS, no build step)
+  results.html, results.js, tally.js  blind-test results page and the vote arithmetic
   presets.js        test passages (shared with build-demo)
   demo/             recorded Samples
 scripts/
   build-demo.js     records Samples
 docs/
   USER-GUIDE.md     full walkthrough
+results/
+  votes.jsonl       blind-test votes, one per line (created on first vote; not in git)
 ```
 
 ## Notes and limits
@@ -174,7 +190,6 @@ Ideas for turning this hands-on test bench into a more complete evaluation tool:
 - **Automatic accuracy check:** transcribe each take with speech-to-text and score it against the script (word error rate), to catch "two thousand twenty-six dollars" automatically.
 - **Saved results:** keep runs across sessions and export them as CSV or JSON.
 - **Repeat runs:** run each provider several times and report median and worst-case latency.
-- **Blind listening:** rate takes 1–5 without knowing the provider.
 - **More providers:** Google Cloud, Azure AI Speech, Amazon Polly, Hume, and local open-source models such as Kokoro.
 - **Speech-to-text torture tests:** TTS is only half of a spoken conversation with AI; transcription is the other half.
 

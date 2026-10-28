@@ -9,6 +9,7 @@ This guide walks through the app one area at a time. For installation, see the [
 - [5. Pronunciations](#5-pronunciations)
 - [6. Provider tips](#6-provider-tips)
 - [7. Samples (pre-recorded takes)](#7-samples-pre-recorded-takes)
+- [8. Blind test](#8-blind-test)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -211,6 +212,16 @@ Then check **What was sent** and any warnings to see how each provider handled i
 - **Voices and models** used for samples are in the `lineup` list at the top of `scripts/build-demo.js`. For Cartesia, set `CARTESIA_DEMO_VOICE=<voice id>` in `.env`.
 - **Include your pronunciation fixes:** Export from the Pronunciations panel, rename the file to `demo-lexicon.json`, put it in the app folder, then run build-demo.
 - Clips are saved in `public/demo/clips/` and their details in `public/demo/manifest.json`. Running again replaces those presets' clips.
+
+---
+
+## 8. Blind test
+
+Tick **Blind test** next to **Generate** to judge takes by ear without knowing whose they are. It needs two or more voices on and is remembered between visits.
+
+The takes arrive shuffled as **Take A, Take B, Take C…** with a waveform, the play button and the clip length, and nothing else: no provider, model, voice, timings, cost or "what was sent". On each card choose **Best** for the one you'd keep (required), give the others a **Rank** if you like, and tick **Numbers wrong** if you heard a number, unit or name read incorrectly. Below the cards add your name (remembered) and an optional note, then **Submit vote and reveal**: the cards turn into ordinary takes with every detail, keeping their letters, and the run is closed to further votes. A take that failed is listed after the reveal too.
+
+**Results** in the top bar (also at `/results`) sums every vote: appearances, wins, win rate, numbers-wrong count and mean rank, grouped by voice, model or provider; filtered by voter and script; plus a head-to-head of any two voices in the runs where both were heard. Votes live in `results/votes.jsonl` next to the app, one JSON line each, and survive restarts. A run that hasn't been voted on yet is held in the server's memory only, so after a restart generate it again.
 
 ---
 

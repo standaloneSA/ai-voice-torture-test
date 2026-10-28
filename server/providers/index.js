@@ -5,10 +5,10 @@ import cartesia from './cartesia.js';
 import deepgram from './deepgram.js';
 import openai from './openai.js';
 import gemini from './gemini.js';
-import mock from './mock.js';
+import { mocks } from './mock.js';
 
 const all = [elevenlabs, cartesia, deepgram, openai, gemini];
-if (process.env.MOCK_PROVIDER === '1') all.push(mock);
+if (process.env.MOCK_PROVIDER === '1') all.push(...mocks);
 
 export const providers = Object.fromEntries(all.map((p) => [p.id, p]));
 export const providerList = all;

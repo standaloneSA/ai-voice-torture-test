@@ -7,6 +7,7 @@ import { providers, providerList, isConfigured, keyNames } from './providers/ind
 import { synthesize } from './synthesize.js';
 import { generateText, suggestPronunciation } from './claude.js';
 import { guardInfo, checkLive, checkPasscode } from './guard.js';
+import { blindRun, recordVote, readVotes } from './blind.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const PORT = Number(process.env.PORT || 5178);
@@ -101,6 +102,26 @@ const routes = {
     return synthesize(body);
   },
 
+  // Blind test: the whole lineup in one request, so the browser never learns which take is whose.
+  // Counts against the daily limits exactly like one Generate per take.
+  'POST /api/blind-run': async (req) => {
+    const body = await readJson(req);
+    const text = String(body.text || '').trim();
+    if (!text) throw Object.assign(new Error('Add some text first.'), { status: 400 });
+    if (text.length > MAX_CHARS) throw Object.assign(new Error(`Text is ${text.length} characters; the limit is ${MAX_CHARS}.`), { status: 400 });
+    const n = Array.isArray(body.targets) ? body.targets.length : 0;
+    if (n < 2) throw Object.assign(new Error('A blind test needs at least two voices turned on.'), { status: 400 });
+    for (let i = 0; i < n; i++) {
+      const blocked = checkLive(req, text.length);
+      if (blocked) throw Object.assign(new Error(blocked), { status: 403 });
+    }
+    return blindRun({ ...body, text });
+  },
+
+  'POST /api/votes': async (req) => recordVote(await readJson(req)),
+
+  'GET /api/results': async () => readVotes(),
+
   'POST /api/generate-text': async (req) => {
     const body = await readJson(req);
     const blocked = checkLive(req, 0);
@@ -117,7 +138,7 @@ const routes = {
 };
 
 async function serveStatic(res, pathname) {
-  const rel = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+  const rel = decodeURIComponent(pathname === '/' ? '/index.html' : pathname === '/results' ? '/results.html' : pathname);
   const file = path.normalize(path.join(ROOT, rel));
   if (!file.startsWith(ROOT)) return send(res, 403, { error: 'Forbidden' });
   try {

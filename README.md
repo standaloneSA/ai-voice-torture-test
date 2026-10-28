@@ -45,6 +45,7 @@ Every provider has its own way of fixing pronunciation, so the app turns one sav
 | **Cartesia** | inline `<<ˈ\|s\|ɑ\|k\|ə\|n\|i>>` | sounds-like spelling |
 | **Deepgram** | inline `\{"word": "Saucony", "pronounce": "ˈsɑkəni"\}` | respelling |
 | **OpenAI** | a line in the `instructions` prompt (gpt-4o-mini-tts) | respelling |
+| **OpenAI Realtime** | a line in the session `instructions` | respelling |
 | **Google Gemini** | a line in the Style prompt | respelling |
 
 ![The Pronunciations panel: a saved fix for nVidia with a chip per provider showing which method each one gets, and Saucony being added](docs/images/pronunciations.jpg)
@@ -53,7 +54,7 @@ Every provider has its own way of fixing pronunciation, so the app turns one sav
 
 ### 1. Install Node.js
 
-You need **Node.js 20.12 or newer**. Check with `node -v` in a terminal. If it's missing or older, install the **LTS** version from [nodejs.org](https://nodejs.org).
+You need **Node.js 20.12 or newer** (22 or newer for the OpenAI Realtime provider, which uses Node's built-in WebSocket). Check with `node -v` in a terminal. If it's missing or older, install the **LTS** version from [nodejs.org](https://nodejs.org).
 
 ### 2. Get the code
 
@@ -76,10 +77,18 @@ Copy `.env.example` to a new file named `.env` and paste in the keys you have. A
 | Cartesia | [play.cartesia.ai](https://play.cartesia.ai) → API Keys | 20K characters/month (non-commercial) |
 | ElevenLabs | [elevenlabs.io](https://elevenlabs.io) → profile → API Keys | ~10K characters/month (attribution required) |
 | OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | none; prepaid credit required |
+| OpenAI Realtime | the same `OPENAI_API_KEY` (see the note below) | none; prepaid credit required |
 | Google Gemini | [aistudio.google.com](https://aistudio.google.com) → Get API key | free tier with rate limits (Google may use free-tier data to improve its products) |
 | Anthropic (Claude) | [platform.claude.com](https://platform.claude.com) → API Keys | none; prepaid credit required |
 
 <sub>*As of October 2026. Check each provider's pricing page.</sub>
+
+**OpenAI Realtime.** OpenAI retires `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` on 2027-01-06. The named replacement, `gpt-realtime-2.1-mini` (and the full-size `gpt-realtime-2.1`), runs only on the Realtime API: a conversational model over a WebSocket that is *told to read your text*, not a TTS endpoint. It is also the only place the `alloy` voice continues. The **OpenAI Realtime** provider uses the same `OPENAI_API_KEY`, opens one WebSocket session per take (`session.update` → your script as a user message → `response.create`), collects the 24 kHz PCM audio and the model's own transcript, wraps the audio as WAV and closes the session.
+
+- **Check the transcript.** A chat model can paraphrase, skip or add words, so each take shows the transcript the model emitted under its stats. Compare it with the script.
+- **Cost is metered, not estimated.** Realtime audio is billed per token ($20 per 1M audio-output tokens for mini, $64 for 2.1). The pre-run estimate assumes about $0.06 (mini) or $0.19 (2.1) per audio minute; a finished take shows **Cost (metered)**, computed from the `usage` block in `response.done` (audio-output tokens × list price, plus the few text tokens), and its Provider report shows the arithmetic.
+- **Needs Node 22 or newer.** The provider uses Node's built-in WebSocket so the app stays dependency-free. On Node 20 the take fails with a clear message and every other provider still works.
+- Voices: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin and cedar. fable, nova and onyx don't exist on the Realtime API.
 
 **Keep `.env` private.** It holds your keys and is listed in `.gitignore` so git won't upload it. Don't put it in a shared folder.
 
@@ -103,7 +112,7 @@ All settings live in `.env` (see `.env.example`):
 
 | Setting | Purpose |
 |---|---|
-| `ELEVENLABS_API_KEY`, `CARTESIA_API_KEY`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Provider keys. Blank = provider hidden. |
+| `ELEVENLABS_API_KEY`, `CARTESIA_API_KEY`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Provider keys. Blank = provider hidden. `OPENAI_API_KEY` enables both OpenAI and OpenAI Realtime. |
 | `ANTHROPIC_API_KEY` | Enables "Ask Claude" and "Suggest IPA with Claude". |
 | `ANTHROPIC_WORKSPACE_ID` | Only if Claude says your key "is not scoped to a workspace". |
 | `CLAUDE_MODEL` | Defaults to `claude-haiku-5-5`. |

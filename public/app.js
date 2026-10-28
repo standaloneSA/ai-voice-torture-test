@@ -401,7 +401,9 @@ async function fillTake(card, p, r) {
   card.classList.remove('loading');
 
   const m = r.metrics;
-  const cost = estimateCost(r.price, m.sentChars, duration);
+  // A provider that reports usage (OpenAI Realtime) gives the take's real cost; otherwise estimate from list price.
+  const metered = r.cost?.usd != null;
+  const cost = metered ? r.cost.usd : estimateCost(r.price, m.sentChars, duration);
   const rtf = duration ? m.totalMs / 1000 / duration : null;
   const stats = [
     ['First audio', fmtMs(m.ttfaMs), 'ttfa'],
@@ -409,10 +411,12 @@ async function fillTake(card, p, r) {
     ['Audio length', duration ? `${duration.toFixed(1)}<small>s</small>` : '—'],
     ['Real-time factor', rtf ? `${rtf.toFixed(2)}<small>×</small>` : '—', 'rtf'],
     ['Characters', `${m.sentChars.toLocaleString()}${m.sentChars !== m.inputChars ? `<small>of ${m.inputChars} typed</small>` : ''}`],
-    ['Est. cost', fmtUsd(cost), 'cost'],
+    [metered ? 'Cost (metered)' : 'Est. cost', fmtUsd(cost), 'cost'],
   ];
   $('.stats', card).innerHTML = stats.map(([l, v, k]) => `<div ${k ? `data-k="${k}"` : ''}><dt>${l}</dt><dd>${v}</dd></div>`).join('');
   $('.time', card).textContent = duration ? fmtSec(duration) : '';
+  // What the model said, for providers that return a transcript (OpenAI Realtime): a paraphrase should be readable, not just audible.
+  if (r.transcript) $('.sent', card).insertAdjacentHTML('beforebegin', `<p class="transcript"><b>Transcript</b> ${esc(r.transcript)}</p>`);
 
   const report = r.providerReport ? `<h4>Provider report</h4><pre class="sent-text">${esc(Object.entries(r.providerReport).map(([k, v]) => `${k}: ${v}`).join('\n'))}</pre>` : '';
   const { text: _t, transcript: _tr, input: _i, ...params } = r.sent || {};

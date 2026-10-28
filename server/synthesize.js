@@ -29,6 +29,10 @@ export async function synthesize({ provider, model, voice, text, lexicon = [], s
     applied: compiled.applied,
     warnings: [...(compiled.warnings || []), ...(r.warnings || [])],
     providerReport: r.providerReport || null,
+    // Set by providers that hear the words back (OpenAI Realtime): what the model actually said, and
+    // the take's real cost from the usage the API reported (the UI falls back to the list-price estimate).
+    transcript: r.transcript || null,
+    cost: r.cost || null,
   };
 }
 

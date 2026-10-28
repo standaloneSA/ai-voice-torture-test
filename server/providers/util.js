@@ -46,6 +46,29 @@ export async function timedFetch(provider, url, options) {
   };
 }
 
+/**
+ * Wrap raw PCM (16-bit signed little-endian, as streamed by the OpenAI Realtime API) in a 44-byte
+ * WAV header so the browser's decodeAudioData / <audio> can play it.
+ */
+export function pcmToWav(pcm, { rate = 24000, channels = 1, bits = 16 } = {}) {
+  const blockAlign = (channels * bits) / 8;
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0);
+  h.writeUInt32LE(36 + pcm.length, 4);
+  h.write('WAVE', 8);
+  h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16); // fmt chunk size
+  h.writeUInt16LE(1, 20); // PCM
+  h.writeUInt16LE(channels, 22);
+  h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * blockAlign, 28);
+  h.writeUInt16LE(blockAlign, 32);
+  h.writeUInt16LE(bits, 34);
+  h.write('data', 36);
+  h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**

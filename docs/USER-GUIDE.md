@@ -79,6 +79,7 @@ When a provider is on, its row shows:
   - OpenAI's `tts-1` models have 9 of the 13 voices. Picking Marin or Cedar with them falls back to Alloy, with a warning.
 - **Extra controls**, only where the API supports them:
   - **OpenAI → Instructions** (gpt-4o-mini-tts only): plain-English direction such as *"Calm narrator, slight smile, slow down on numbers."* This prompt is OpenAI's main lever for tone and pronunciation.
+  - **OpenAI Realtime → Instructions**: the same idea for `gpt-realtime-2.1-mini` / `gpt-realtime-2.1` (the Realtime API models that replace `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` from 2027-01-06). It is sent as the session's system prompt ahead of a fixed "read this exactly as written" line. These are chat models reading your text, so each take also shows the **transcript** of what the model actually said, and its cost is metered from the usage the API reports rather than estimated. Needs Node 22 or newer.
   - **Cartesia → Emotion (beta)**: calm, content, excited, sad, angry and more.
   - **Google Gemini → Style**: plain-English direction for tone, emotion and pace, such as *"Warm and unhurried, like a late-night radio host."* Gemini reads the script word for word, so directions belong here, not in the text.
 
@@ -117,7 +118,7 @@ With two or more takes, **fastest** and **cheapest** badges mark the winners. Ti
 - **Text**: exactly what the provider received, including any tags or respellings the app added.
 - **Fixes**: which method was used for each saved word, or why none was.
 - **Warnings**: for example, "This model ignores `<break>` tags" or "speed was left at 1.0".
-- **Provider report**: Deepgram returns which pronunciations it actually applied, plus warning codes.
+- **Provider report**: Deepgram returns which pronunciations it actually applied, plus warning codes. OpenAI Realtime reports the response status, the token usage and the cost arithmetic.
 - **Request settings**: model, voice, speed and options.
 - **Download audio**: saves the clip.
 

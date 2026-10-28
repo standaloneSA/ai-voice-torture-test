@@ -86,11 +86,13 @@ Copy `.env.example` to a new file named `.env` and paste in the keys you have. A
 **OpenAI Realtime.** OpenAI retires `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` on 2027-01-06. The named replacement, `gpt-realtime-2.1-mini` (and the full-size `gpt-realtime-2.1`), runs only on the Realtime API: a conversational model over a WebSocket that is *told to read your text*, not a TTS endpoint. It is also the only place the `alloy` voice continues. The **OpenAI Realtime** provider uses the same `OPENAI_API_KEY`, opens one WebSocket session per take (`session.update` → your script as a user message → `response.create`), collects the 24 kHz PCM audio and the model's own transcript, wraps the audio as WAV and closes the session.
 
 - **Check the transcript.** A chat model can paraphrase, skip or add words, so each take shows the transcript the model emitted under its stats. Compare it with the script.
-- **Cost is metered, not estimated.** Realtime audio is billed per token ($20 per 1M audio-output tokens for mini, $64 for 2.1). The pre-run estimate assumes about $0.06 (mini) or $0.19 (2.1) per audio minute; a finished take shows **Cost (metered)**, computed from the `usage` block in `response.done` (audio-output tokens × list price, plus the few text tokens), and its Provider report shows the arithmetic.
+- **Cost is metered, not estimated.** Realtime audio is billed per token ($20 per 1M audio-output tokens for mini, $64 for 2.1), and output audio measures 20 tokens per second of speech, so about $0.024 (mini) or $0.077 (2.1) per audio minute: that is what the pre-run estimate assumes. A finished take shows **Cost (metered)**, computed from the `usage` block in `response.done` (audio-output tokens × list price, plus the few text tokens), and its Provider report shows the arithmetic.
 - **Needs Node 22 or newer.** The provider uses Node's built-in WebSocket so the app stays dependency-free. On Node 20 the take fails with a clear message and every other provider still works.
 - Voices: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin and cedar. fable, nova and onyx don't exist on the Realtime API.
 
 **Keep `.env` private.** It holds your keys and is listed in `.gitignore` so git won't upload it. Don't put it in a shared folder.
+
+**A variable already exported in your shell wins over `.env`.** Node's `process.loadEnvFile()` never overrides a variable that is already set, so if your shell exports, say, an old `OPENAI_API_KEY`, the app uses that one and silently ignores the value in `.env`. If a provider rejects a key you know is good, check `echo $OPENAI_API_KEY` and start the app with `env -u OPENAI_API_KEY npm start` (or unset it first).
 
 ### 4. Start the app
 
